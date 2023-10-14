@@ -2,6 +2,8 @@ from fastapi import HTTPException
 
 
 class GetEntityError(HTTPException):
+    """Custom Error."""
+
     def __init__(
         self,
     ) -> None:
@@ -10,6 +12,8 @@ class GetEntityError(HTTPException):
 
 
 class ConsistencyError(HTTPException):
+    """Custom Error."""
+
     def __init__(
         self,
     ) -> None:
