@@ -1,4 +1,8 @@
-# Project Name Readme
+# Task managing Readme
+
+## Project Purpose:
+
+The primary objective of this project is to provide a service for the orchestration and execution of complex builds that consist of interdependent tasks. By analyzing the hierarchical structure of tasks within builds, this service efficiently parses the task tree, determines task dependencies, and calculates the optimal execution order for each build. This ensures that tasks are launched in a valid and logical sequence, streamlining the build process and enhancing overall project efficiency.
 
 This is a brief guide on how to set up and run the project. Please follow the instructions below to get started.
 
