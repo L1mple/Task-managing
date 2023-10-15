@@ -1,5 +1,4 @@
 from itertools import chain
-from typing import Mapping
 
 from app.common.errors import ConsistencyError, EntityNotFoundError, GetEntityError
 from app.infrastructure.repository import BuildRepository
@@ -11,8 +10,6 @@ class BuildService:
 
     def __init__(self, repository: BuildRepository) -> None:
         self.repository = repository
-        self.builds: Mapping[BuildName, list[TaskName]] = {}
-        self.tasks: Mapping[TaskName, list[TaskName]] = {}
 
     async def seed_tasks(self):
         """Seed self attribute with tasks from repo.
@@ -21,10 +18,10 @@ class BuildService:
             GetEntityError: If smth went wrong in repo while fetching tasks
         """
         try:
-            tasks_list = await self.repository.get_tasks()
+            tasks_list = await self.repository.get_tasks_from_source()
         except Exception as exc:
             raise GetEntityError() from exc
-        self.tasks = {task.name: task.dependencies for task in tasks_list}
+        await self.repository.save_tasks(tasks_list=tasks_list)
 
     async def seed_builds(self):
         """Seed self attribute with builds from repo.
@@ -33,10 +30,10 @@ class BuildService:
             GetEntityError: If smth went wrong in repo while fetching builds
         """
         try:
-            builds_list = await self.repository.get_builds()
+            builds_list = await self.repository.get_builds_from_source()
         except Exception as exc:
             raise GetEntityError() from exc
-        self.builds = {build.name: build.tasks for build in builds_list}
+        await self.repository.save_builds(builds_list=builds_list)
         await self.validate_builds_tasks()
 
     async def validate_builds_tasks(self) -> Exception | None:
@@ -48,8 +45,12 @@ class BuildService:
         Returns:
             Exception | None: If all good returns nothing otherwise -> throw exc
         """
-        builds_tasks = set(chain(*self.builds.values()))  # Unpack matrix to list
-        valid_tasks = set(self.tasks.keys())
+        builds = await self.repository.get_builds()
+        tasks = await self.repository.get_tasks()
+        builds_tasks = set(
+            chain(*[build.tasks for build in builds])  # Unpack matrix to list
+        )
+        valid_tasks = {task.name for task in tasks}
         if not builds_tasks.issubset(valid_tasks):
             raise ConsistencyError()
 
@@ -65,12 +66,12 @@ class BuildService:
         Returns:
             list[TaskName]: Sorted list of TaskNames
         """
-        build_tasks = self.builds.get(build_name)
-        if build_tasks is None:
+        build = await self.repository.get_build(build_name=build_name)
+        if build is None:
             raise EntityNotFoundError("No build found with passed name")
         single_sorted_tasks = []
         used_tasks = set()
-        for task in build_tasks:
+        for task in build.tasks:
             sorted_tasks, used_tasks_single = await self.get_sorted_tasks_for_task(
                 task_name=task,
                 sorted_tasks=[],
@@ -99,13 +100,13 @@ class BuildService:
         Returns:
             tuple[list[TaskName], set[TaskName]]: result answer and helper set
         """
-        task_dependencies = self.tasks.get(task_name)
-        if task_dependencies is None:
+        task = await self.repository.get_task(task_name=task_name)
+        if task is None:
             raise ConsistencyError()
         if task_name in used_tasks:
             return sorted_tasks, used_tasks
-        if len(task_dependencies) > 0:
-            for dependant_task_name in task_dependencies:
+        if len(task.dependencies) > 0:
+            for dependant_task_name in task.dependencies:
                 sorted_tasks, used_tasks = await self.get_sorted_tasks_for_task(
                     task_name=dependant_task_name,
                     sorted_tasks=sorted_tasks,
