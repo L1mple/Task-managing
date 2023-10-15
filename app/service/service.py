@@ -1,7 +1,7 @@
 from itertools import chain
 from typing import Mapping
 
-from app.common.errors import ConsistencyError, GetEntityError
+from app.common.errors import ConsistencyError, EntityNotFoundError, GetEntityError
 from app.infrastructure.repository import BuildRepository
 from app.service.models import BuildName, TaskName
 
@@ -52,3 +52,53 @@ class BuildService:
         valid_tasks = set(self.tasks.keys())
         if not builds_tasks.issubset(valid_tasks):
             raise ConsistencyError()
+
+    async def get_sorted_tasks(self, build_name: BuildName) -> list[TaskName]:
+        """Main function for get sorted list of tasks for build."""
+        build_tasks = self.builds.get(build_name)
+        if build_tasks is None:
+            raise EntityNotFoundError("No build found with passed name")
+        single_sorted_tasks = []
+        for task in build_tasks:
+            single_sorted_tasks.append(
+                await self.get_sorted_tasks_for_task(
+                    task_name=task,
+                    sorted_tasks=[],
+                    level=1,
+                )
+            )
+        sorted_answer = set()
+        while single_sorted_tasks:
+            level = -1
+            value_to_add = None
+            index = None
+            for index, array in enumerate(single_sorted_tasks):
+                if array:
+                    if array[0][1] > level:
+                        value_to_add = array[0][0]
+                        index = index
+            sorted_answer.add(value_to_add)
+            if single_sorted_tasks[index]:
+                single_sorted_tasks[index].pop(0)
+            else:
+                single_sorted_tasks.pop(index)
+        return [*sorted_answer]
+
+    async def get_sorted_tasks_for_task(
+        self,
+        task_name: TaskName,
+        sorted_tasks: list,
+        level: int,
+    ) -> list[tuple[TaskName, int]]:
+        task_dependencies = self.tasks.get(task_name)
+        if task_dependencies is None:
+            raise ConsistencyError()
+        if len(task_dependencies) > 0:
+            for task_name in task_dependencies:
+                sorted_tasks += await self.get_sorted_tasks_for_task(
+                    task_name=task_name,
+                    sorted_tasks=sorted_tasks,
+                    level=level + 1,
+                )
+        sorted_tasks.append((task_name, level))
+        return sorted_tasks
