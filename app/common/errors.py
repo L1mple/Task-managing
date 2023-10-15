@@ -17,8 +17,8 @@ class ConsistencyError(HTTPException):
     def __init__(
         self,
     ) -> None:
-        self.status_code = 502
-        self.detail = "Passed values are not valid"
+        self.status_code = 409
+        self.detail = "Passed values build <-> tasks are not valid"
 
 
 class EntityNotFoundError(HTTPException):

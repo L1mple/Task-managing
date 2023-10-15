@@ -54,51 +54,63 @@ class BuildService:
             raise ConsistencyError()
 
     async def get_sorted_tasks(self, build_name: BuildName) -> list[TaskName]:
-        """Main function for get sorted list of tasks for build."""
+        """Main gateway to "business" logic of service.
+
+        Args:
+            build_name (BuildName): Name of build to prepare tasks list
+
+        Raises:
+            EntityNotFoundError: If there is no such build in system
+
+        Returns:
+            list[TaskName]: Sorted list of TaskNames
+        """
         build_tasks = self.builds.get(build_name)
         if build_tasks is None:
             raise EntityNotFoundError("No build found with passed name")
         single_sorted_tasks = []
+        used_tasks = set()
         for task in build_tasks:
-            single_sorted_tasks.append(
-                await self.get_sorted_tasks_for_task(
-                    task_name=task,
-                    sorted_tasks=[],
-                    level=1,
-                )
+            sorted_tasks, used_tasks_single = await self.get_sorted_tasks_for_task(
+                task_name=task,
+                sorted_tasks=[],
+                used_tasks=used_tasks,
             )
-        sorted_answer = set()
-        while single_sorted_tasks:
-            level = -1
-            value_to_add = None
-            index = None
-            for index, array in enumerate(single_sorted_tasks):
-                if array:
-                    if array[0][1] > level:
-                        value_to_add = array[0][0]
-                        index = index
-            sorted_answer.add(value_to_add)
-            if single_sorted_tasks[index]:
-                single_sorted_tasks[index].pop(0)
-            else:
-                single_sorted_tasks.pop(index)
-        return [*sorted_answer]
+            used_tasks.update(used_tasks_single)
+            single_sorted_tasks.append(sorted_tasks)
+        return list(chain(*single_sorted_tasks))
 
     async def get_sorted_tasks_for_task(
         self,
         task_name: TaskName,
         sorted_tasks: list,
-        level: int,
-    ) -> list[tuple[TaskName, int]]:
+        used_tasks: set,
+    ) -> tuple[list[TaskName], set[TaskName]]:
+        """Recursive iterate through tree of tasks.
+
+        Args:
+            task_name (TaskName): Current node
+            sorted_tasks (list): Cached result from previous steps
+            used_tasks (set): Set with unique task names
+
+        Raises:
+            ConsistencyError: If passed data builds <-> tasks are not valid
+
+        Returns:
+            tuple[list[TaskName], set[TaskName]]: result answer and helper set
+        """
         task_dependencies = self.tasks.get(task_name)
         if task_dependencies is None:
             raise ConsistencyError()
+        if task_name in used_tasks:
+            return sorted_tasks, used_tasks
         if len(task_dependencies) > 0:
-            for task_name in task_dependencies:
-                sorted_tasks += await self.get_sorted_tasks_for_task(
-                    task_name=task_name,
+            for dependant_task_name in task_dependencies:
+                sorted_tasks, used_tasks = await self.get_sorted_tasks_for_task(
+                    task_name=dependant_task_name,
                     sorted_tasks=sorted_tasks,
-                    level=level + 1,
+                    used_tasks=used_tasks,
                 )
-        sorted_tasks.append((task_name, level))
-        return sorted_tasks
+        sorted_tasks.append(task_name)
+        used_tasks.add(task_name)
+        return sorted_tasks, used_tasks
