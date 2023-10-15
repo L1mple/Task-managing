@@ -1,0 +1,8 @@
+.pre-commit-config.yaml
+.gitignore
+README.md
+logs/*
+.vscode/*
+venv/*
+volumes/*
+.pytest_cache/*
